@@ -35,7 +35,7 @@ const COUNTRY_DATA = {
   bdw:{ name:'Bangladesh Women', flag:'🇧🇩', chocolate:'Tigress Treat', tags:['Brave','Rising'], tagline:'Bengal Tigresses', primary:'#006A4E', secondary:'#F42A41' },
 };
 
-/* ========== MATCH SCHEDULE (14 new matches) ========== */
+/* ========== MATCH SCHEDULE ========== */
 function parseIST(dateStr, timeStr) {
   const [time, period] = timeStr.split(' ');
   let [h, m] = time.split(':').map(Number);
@@ -71,7 +71,6 @@ const MATCHES = RAW_MATCHES.map((m, idx) => ({
   betCounts: { home: 0, away: 0 },
 }));
 
-/* ========== DATABASE ========== */
 let db = { users: [], purchases: [], matches: MATCHES, pendingDeposits: [], pendingWithdrawals: [] };
 
 function loadData() {
@@ -194,7 +193,7 @@ app.post('/api/admin/deposit/action', (req, res) => {
   else { return res.status(400).json({ message: 'Invalid action.' }); }
 });
 
-/* ========== PLACE BET (₹500, 50/50 balancing) ========== */
+/* ========== PLACE BET (₹500) ========== */
 app.post('/api/place-bet', authMiddleware, (req, res) => {
   const { matchId, chocolateType } = req.body;
   updateMatchStatuses();

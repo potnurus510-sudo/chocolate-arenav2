@@ -117,7 +117,7 @@
     <div class="modal">
       <button class="close-btn" onclick="document.getElementById('withdrawRequestModal').style.display='none'">✕</button>
       <h2>💸 Request Withdrawal</h2>
-      <p style="font-size:0.8rem; color:var(--text2);">You'll receive 77% after admin approval</p>
+      <p style="font-size:0.8rem; color:var(--text2);">You'll receive 80% after admin approval</p>
       <form onsubmit="submitWithdrawalRequest(event)">
         <div class="form-group">
           <label>Your UPI ID</label>
@@ -198,7 +198,8 @@
       bd:{flag:'🇧🇩',name:'Bangladesh'}, pk:{flag:'🇵🇰',name:'Pakistan'}, eng:{flag:'🏴󠁧󠁢󠁥󠁮󠁧󠁿',name:'England'},
       ire:{flag:'🇮🇪',name:'Ireland'}, sco:{flag:'🏴󠁧󠁢󠁳󠁣󠁴󠁿',name:'Scotland'}, za:{flag:'🇿🇦',name:'South Africa'},
       nz:{flag:'🇳🇿',name:'New Zealand'}, wi:{flag:'🌴',name:'West Indies'}, nl:{flag:'🇳🇱',name:'Netherlands'},
-      zw:{flag:'🇿🇼',name:'Zimbabwe'}
+      zw:{flag:'🇿🇼',name:'Zimbabwe'}, inw:{flag:'🇮🇳',name:'India Women'}, auw:{flag:'🇦🇺',name:'Australia Women'},
+      saw:{flag:'🇿🇦',name:'South Africa Women'}, bdw:{flag:'🇧🇩',name:'Bangladesh Women'}
     };
 
     async function loadUpiId() {
@@ -240,8 +241,38 @@
       overlay.style.display = 'flex';
     }
 
-    async function handleAuth(e, type) { /* same as previous, auth logic unchanged */ }
-    function logout() { /* clear localStorage, reset UI */ }
+    async function handleAuth(e, type) {
+      e.preventDefault();
+      const errorEl = document.getElementById('modalError');
+      errorEl.textContent = '';
+      const isReg = type==='register';
+      const name = isReg ? document.getElementById('regName').value.trim() : '';
+      const email = document.getElementById('regEmail').value.trim();
+      const password = document.getElementById('regPassword').value;
+      if (!email || !password || (isReg && !name)) { errorEl.textContent='All fields required'; return; }
+      const endpoint = isReg ? '/api/register' : '/api/login';
+      const body = isReg ? {name,email,password} : {email,password};
+      try {
+        const res = await fetch(API_BASE+endpoint, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+        const data = await res.json();
+        if (!res.ok) { errorEl.textContent = '⚠️ '+ (data.message||'Error'); return; }
+        authToken = data.token; currentUser = data.user;
+        localStorage.setItem('arena_token', authToken);
+        localStorage.setItem('arena_user', JSON.stringify(currentUser));
+        document.getElementById('modalOverlay').style.display = 'none';
+        updateUIForLoggedInUser();
+        loadMatches();
+        showToast(`Welcome, ${currentUser.name}!`, 'success');
+      } catch (err) { errorEl.textContent='Network error'; }
+    }
+
+    function logout() {
+      authToken = null; currentUser = null;
+      localStorage.removeItem('arena_token'); localStorage.removeItem('arena_user');
+      updateUIForLoggedOutUser();
+      loadMatches();
+    }
+
     function updateUIForLoggedInUser() {
       document.getElementById('userBar').innerHTML = `
         <span style="color:var(--gold2);font-weight:600;">⚔️ ${escapeHTML(currentUser.name)} <span class="wallet-badge">₹${currentUser.balance||0}</span></span>
@@ -315,20 +346,158 @@
       }).join('');
     }
 
-    async function placeBet(matchId, side) { /* same as before */ }
+    async function placeBet(matchId, side) {
+      if (!authToken) { showToast('Please login', 'error'); openModal('login'); return; }
+      try {
+        const res = await fetch(API_BASE + '/api/place-bet', {
+          method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+authToken},
+          body: JSON.stringify({ matchId, chocolateType: side })
+        });
+        const data = await res.json();
+        if (!res.ok) { showToast(data.message, 'error'); return; }
+        showToast(`✅ Bet placed! New balance ₹${data.balance}`, 'success');
+        currentUser.balance = data.balance;
+        localStorage.setItem('arena_user', JSON.stringify(currentUser));
+        updateUIForLoggedInUser();
+        loadMatches();
+      } catch (err) { showToast('Error', 'error'); }
+    }
 
-    async function submitManualDeposit(e) { /* same as before, using /api/deposit/submit */ }
-    async function submitWithdrawalRequest(e) { /* same as before, using /api/withdraw/request */ }
+    async function submitManualDeposit(e) {
+      e.preventDefault();
+      const amount = Number(document.getElementById('depositAmount').value);
+      const txnId = document.getElementById('depositTxnId').value.trim();
+      if (!amount || amount < 100) { showToast('Minimum deposit ₹100', 'error'); return; }
+      if (!txnId) { showToast('Transaction ID required', 'error'); return; }
+      try {
+        const res = await fetch(API_BASE + '/api/deposit/submit', {
+          method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+authToken},
+          body: JSON.stringify({ amount, txnId })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          showToast(data.message, 'success');
+          document.getElementById('depositModal').style.display = 'none';
+          document.getElementById('depositTxnId').value = '';
+          document.getElementById('depositAmount').value = '';
+        } else { showToast(data.message, 'error'); }
+      } catch (err) { showToast('Error submitting deposit', 'error'); }
+    }
 
-    async function openAdminDeposits() { /* same */ }
-    function renderPendingDeposits(deposits, secret) { /* same */ }
-    async function processDeposit(depositId, action, secret) { /* same */ }
+    async function submitWithdrawalRequest(e) {
+      e.preventDefault();
+      const amount = Number(document.getElementById('withdrawAmount').value);
+      const upiId = document.getElementById('withdrawUpiId').value.trim();
+      if (!amount || !upiId) { showToast('All fields required', 'error'); return; }
+      try {
+        const res = await fetch(API_BASE + '/api/withdraw/request', {
+          method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+authToken},
+          body: JSON.stringify({ amount, upiId })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          showToast(data.message, 'success');
+          document.getElementById('withdrawRequestModal').style.display = 'none';
+          document.getElementById('withdrawAmount').value = '';
+          document.getElementById('withdrawUpiId').value = '';
+        } else { showToast(data.message, 'error'); }
+      } catch (err) { showToast('Error', 'error'); }
+    }
 
-    async function openAdminWithdrawals() { /* same */ }
-    function renderPendingWithdrawals(withdrawals, secret) { /* same */ }
-    async function processWithdrawal(withdrawalId, action, secret) { /* same */ }
+    async function openAdminDeposits() {
+      const secret = document.getElementById('adminSecret')?.value || prompt('Enter admin secret:');
+      if (!secret) return;
+      try {
+        const res = await fetch(API_BASE + '/api/admin/deposits?secret=' + encodeURIComponent(secret));
+        const data = await res.json();
+        if (res.ok) {
+          renderPendingDeposits(data.deposits, secret);
+          document.getElementById('adminDepositsModal').style.display = 'flex';
+        } else { showToast(data.message, 'error'); }
+      } catch (err) { showToast('Error fetching deposits', 'error'); }
+    }
 
-    async function setWinner(e) { /* same as before */ }
+    function renderPendingDeposits(deposits, secret) {
+      const container = document.getElementById('pendingDepositsList');
+      if (deposits.length === 0) { container.innerHTML = '<p style="color:var(--text2);">No pending deposits</p>'; return; }
+      container.innerHTML = deposits.map(d => `
+        <div class="deposit-item">
+          <p><strong>${d.userName}</strong> (${d.userEmail})</p>
+          <p>Amount: ₹${d.amount} | Txn: ${d.txnId}</p>
+          <p style="font-size:0.7rem;">${new Date(d.createdAt).toLocaleString()}</p>
+          <button onclick="processDeposit('${d.id}', 'approve', '${secret}')" style="background:#23d160; color:white; border:none; padding:5px 10px; border-radius:5px; margin-right:5px;">✅ Approve</button>
+          <button onclick="processDeposit('${d.id}', 'reject', '${secret}')" style="background:#ff3860; color:white; border:none; padding:5px 10px; border-radius:5px;">❌ Reject</button>
+        </div>
+      `).join('');
+    }
+
+    async function processDeposit(depositId, action, secret) {
+      try {
+        const res = await fetch(API_BASE + '/api/admin/deposit/action', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ secret, depositId, action })
+        });
+        const data = await res.json();
+        if (res.ok) { showToast(data.message, 'success'); openAdminDeposits(); }
+        else { showToast(data.message, 'error'); }
+      } catch (err) { showToast('Error processing deposit', 'error'); }
+    }
+
+    async function openAdminWithdrawals() {
+      const secret = document.getElementById('adminSecret')?.value || prompt('Enter admin secret:');
+      if (!secret) return;
+      try {
+        const res = await fetch(API_BASE + '/api/admin/withdrawals?secret=' + encodeURIComponent(secret));
+        const data = await res.json();
+        if (res.ok) {
+          renderPendingWithdrawals(data.withdrawals, secret);
+          document.getElementById('adminWithdrawalsModal').style.display = 'flex';
+        } else { showToast(data.message, 'error'); }
+      } catch (err) { showToast('Error fetching withdrawals', 'error'); }
+    }
+
+    function renderPendingWithdrawals(withdrawals, secret) {
+      const container = document.getElementById('pendingWithdrawalsList');
+      if (withdrawals.length === 0) { container.innerHTML = '<p style="color:var(--text2);">No pending withdrawals</p>'; return; }
+      container.innerHTML = withdrawals.map(w => `
+        <div class="deposit-item">
+          <p><strong>${w.userName}</strong> (${w.userEmail})</p>
+          <p>UPI ID: <strong style="color:var(--gold);">${w.upiId}</strong></p>
+          <p>Requested: ₹${w.amount} → You send: ₹${w.netAmount}</p>
+          <p style="font-size:0.7rem;">${new Date(w.createdAt).toLocaleString()}</p>
+          <button onclick="processWithdrawal('${w.id}', 'approve', '${secret}')" style="background:#23d160; color:white; border:none; padding:5px 10px; border-radius:5px; margin-right:5px;">✅ Approve</button>
+          <button onclick="processWithdrawal('${w.id}', 'reject', '${secret}')" style="background:#ff3860; color:white; border:none; padding:5px 10px; border-radius:5px;">❌ Reject</button>
+        </div>
+      `).join('');
+    }
+
+    async function processWithdrawal(withdrawalId, action, secret) {
+      try {
+        const res = await fetch(API_BASE + '/api/admin/withdrawal/action', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ secret, withdrawalId, action })
+        });
+        const data = await res.json();
+        if (res.ok) { showToast(data.message, 'success'); openAdminWithdrawals(); }
+        else { showToast(data.message, 'error'); }
+      } catch (err) { showToast('Error', 'error'); }
+    }
+
+    async function setWinner(e) {
+      e.preventDefault();
+      const secret = document.getElementById('adminSecret').value;
+      const matchId = document.getElementById('adminMatchId').value;
+      const winnerCode = document.getElementById('adminWinnerCode').value;
+      try {
+        const res = await fetch(API_BASE + '/api/admin/set-result', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ secret, matchId, winnerCode })
+        });
+        const data = await res.json();
+        if (res.ok) { showToast(data.message, 'success'); document.getElementById('adminModal').style.display = 'none'; loadMatches(); }
+        else { showToast(data.message, 'error'); }
+      } catch (err) { showToast('Error', 'error'); }
+    }
 
     function init() {
       if (authToken && currentUser) updateUIForLoggedInUser(); else updateUIForLoggedOutUser();
