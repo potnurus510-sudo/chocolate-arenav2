@@ -29,9 +29,13 @@ const COUNTRY_DATA = {
   wi: { name:'West Indies', flag:'🌴', chocolate:'Caribbean Coconut Delight', tags:['Coconut','Island'], tagline:'West Indies tropical joy', primary:'#951B40', secondary:'#F7D117' },
   nl: { name:'Netherlands', flag:'🇳🇱', chocolate:'Dutch Windmill Cocoa', tags:['Floral','Rich'], tagline:'Netherlands chocolate mastery', primary:'#AE1C28', secondary:'#FFFFFF' },
   zw: { name:'Zimbabwe', flag:'🇿🇼', chocolate:'Victoria Falls Crunch', tags:['Wild','Safari'], tagline:'Taste of Zimbabwe', primary:'#006400', secondary:'#FFD700' },
+  inw:{ name:'India Women', flag:'🇮🇳', chocolate:'Royal Maharani Cocoa', tags:['Grace','Power'], tagline:'Women in Blue', primary:'#FF9933', secondary:'#138808' },
+  auw:{ name:'Australia Women', flag:'🇦🇺', chocolate:'Southern Star Bar', tags:['Champion','Bold'], tagline:'Southern Stars', primary:'#012169', secondary:'#E4002B' },
+  saw:{ name:'South Africa Women', flag:'🇿🇦', chocolate:'Protea Crunch', tags:['Fierce','Proud'], tagline:'Protea Fire', primary:'#007749', secondary:'#FFB81C' },
+  bdw:{ name:'Bangladesh Women', flag:'🇧🇩', chocolate:'Tigress Treat', tags:['Brave','Rising'], tagline:'Bengal Tigresses', primary:'#006A4E', secondary:'#F42A41' },
 };
 
-/* ========== NEW MATCH SCHEDULE (from 1 July 2026) ========== */
+/* ========== MATCH SCHEDULE (14 new matches) ========== */
 function parseIST(dateStr, timeStr) {
   const [time, period] = timeStr.split(' ');
   let [h, m] = time.split(':').map(Number);
@@ -41,6 +45,9 @@ function parseIST(dateStr, timeStr) {
 }
 
 const RAW_MATCHES = [
+  { date:'2026-06-28', time:'3:00 PM',  home:'saw', away:'bdw' },
+  { date:'2026-06-28', time:'6:00 PM',  home:'ire', away:'in' },
+  { date:'2026-06-28', time:'7:00 PM',  home:'auw', away:'inw' },
   { date:'2026-07-01', time:'11:00 PM', home:'eng', away:'in' },
   { date:'2026-07-04', time:'7:00 PM',  home:'eng', away:'in' },
   { date:'2026-07-07', time:'11:00 PM', home:'eng', away:'in' },
@@ -65,13 +72,7 @@ const MATCHES = RAW_MATCHES.map((m, idx) => ({
 }));
 
 /* ========== DATABASE ========== */
-let db = {
-  users: [],
-  purchases: [],
-  matches: MATCHES,
-  pendingDeposits: [],
-  pendingWithdrawals: [],
-};
+let db = { users: [], purchases: [], matches: MATCHES, pendingDeposits: [], pendingWithdrawals: [] };
 
 function loadData() {
   try {
@@ -163,16 +164,9 @@ app.post('/api/deposit/submit', authMiddleware, (req, res) => {
   const { amount, txnId } = req.body;
   if (!amount || amount < 100) return res.status(400).json({ message: 'Minimum deposit ₹100' });
   if (!txnId?.trim()) return res.status(400).json({ message: 'Transaction ID required' });
-
   const deposit = {
-    id: uuidv4(),
-    userId: req.user.id,
-    userName: req.user.name,
-    userEmail: req.user.email,
-    amount: Number(amount),
-    txnId: txnId.trim(),
-    status: 'pending',
-    createdAt: new Date().toISOString(),
+    id: uuidv4(), userId: req.user.id, userName: req.user.name, userEmail: req.user.email,
+    amount: Number(amount), txnId: txnId.trim(), status: 'pending', createdAt: new Date().toISOString(),
   };
   db.pendingDeposits.push(deposit);
   saveData();
@@ -190,30 +184,23 @@ app.post('/api/admin/deposit/action', (req, res) => {
   const deposit = db.pendingDeposits.find(d => d.id === depositId);
   if (!deposit) return res.status(404).json({ message: 'Deposit not found' });
   if (deposit.status !== 'pending') return res.status(400).json({ message: 'Already processed' });
-
   if (action === 'approve') {
     deposit.status = 'approved';
     const user = db.users.find(u => u.id === deposit.userId);
     if (user) user.balance = (user.balance || 0) + deposit.amount;
     saveData();
     return res.json({ message: `Deposit approved. ₹${deposit.amount} credited to ${deposit.userName}` });
-  } else if (action === 'reject') {
-    deposit.status = 'rejected';
-    saveData();
-    return res.json({ message: 'Deposit rejected.' });
-  } else {
-    return res.status(400).json({ message: 'Invalid action. Use "approve" or "reject".' });
-  }
+  } else if (action === 'reject') { deposit.status = 'rejected'; saveData(); return res.json({ message: 'Deposit rejected.' }); }
+  else { return res.status(400).json({ message: 'Invalid action.' }); }
 });
 
-/* ========== PLACE BET ========== */
+/* ========== PLACE BET (₹500, 50/50 balancing) ========== */
 app.post('/api/place-bet', authMiddleware, (req, res) => {
   const { matchId, chocolateType } = req.body;
   updateMatchStatuses();
   const match = db.matches.find(m => m.id === matchId);
   if (!match || match.status !== 'upcoming') return res.status(400).json({ message: 'Betting closed' });
   if (match.result) return res.status(400).json({ message: 'Result declared' });
-
   const side = chocolateType === 'home' ? 'home' : 'away';
   const other = side === 'home' ? 'away' : 'home';
   if (match.betCounts[side] > match.betCounts[other]) {
@@ -222,10 +209,8 @@ app.post('/api/place-bet', authMiddleware, (req, res) => {
   if (db.purchases.find(p => p.userId === req.user.id && p.matchId === matchId)) {
     return res.status(400).json({ message: 'Already bet on this match' });
   }
-
-  const BET_AMOUNT = 1000;
-  if (req.user.balance < BET_AMOUNT) return res.status(400).json({ message: 'Insufficient balance. Please deposit.' });
-
+  const BET_AMOUNT = 500;
+  if (req.user.balance < BET_AMOUNT) return res.status(400).json({ message: 'Insufficient balance.' });
   req.user.balance -= BET_AMOUNT;
   const countryCode = chocolateType === 'home' ? match.home : match.away;
   db.purchases.push({
@@ -233,7 +218,6 @@ app.post('/api/place-bet', authMiddleware, (req, res) => {
   });
   match.betCounts[side] += 1;
   saveData();
-
   res.json({ message: 'Bet placed!', flag: COUNTRY_DATA[countryCode]?.flag, chocolateName: COUNTRY_DATA[countryCode]?.chocolate, balance: req.user.balance });
 });
 
@@ -244,25 +228,16 @@ app.post('/api/admin/set-result', (req, res) => {
   const match = db.matches.find(m => m.id === matchId);
   if (!match) return res.status(404).json({ message: 'Match not found' });
   if (match.result) return res.status(400).json({ message: 'Result already set' });
-
   match.result = winnerCode;
   match.status = 'closed';
-
   const bets = db.purchases.filter(p => p.matchId === matchId && p.status === 'active');
   const total = bets.length;
   const winners = bets.filter(b => b.countryCode === winnerCode);
   const winCount = winners.length;
   if (total === 0) { saveData(); return res.json({ message: 'No bets to settle' }); }
-
-  const pool = total * 1000;
+  const pool = total * 500;
   const share = winCount > 0 ? Math.floor(pool / winCount) : 0;
-
-  winners.forEach(b => {
-    b.status = 'won';
-    b.winningAmount = share;
-    const user = db.users.find(u => u.id === b.userId);
-    if (user) user.balance = (user.balance || 0) + share;
-  });
+  winners.forEach(b => { b.status = 'won'; b.winningAmount = share; const user = db.users.find(u => u.id === b.userId); if (user) user.balance = (user.balance || 0) + share; });
   bets.filter(b => b.countryCode !== winnerCode).forEach(b => { b.status = 'lost'; b.winningAmount = 0; });
   saveData();
   res.json({ message: `Result set. ${winCount} winners, each gets ₹${share}` });
@@ -270,23 +245,16 @@ app.post('/api/admin/set-result', (req, res) => {
 
 app.get('/api/wallet', authMiddleware, (req, res) => res.json({ balance: req.user.balance }));
 
-/* ========== WITHDRAWAL REQUEST ========== */
+/* ========== WITHDRAWAL (20% fee) ========== */
 app.post('/api/withdraw/request', authMiddleware, (req, res) => {
   const { amount, upiId } = req.body;
   if (!amount || amount <= 0) return res.status(400).json({ message: 'Invalid amount' });
   if (!upiId?.trim()) return res.status(400).json({ message: 'Your UPI ID is required' });
   if (req.user.balance < amount) return res.status(400).json({ message: 'Insufficient balance' });
-
+  const net = Math.floor(amount * 0.80);
   const withdrawal = {
-    id: uuidv4(),
-    userId: req.user.id,
-    userName: req.user.name,
-    userEmail: req.user.email,
-    upiId: upiId.trim(),
-    amount: Number(amount),
-    netAmount: Math.floor(amount * 0.77),
-    status: 'pending',
-    createdAt: new Date().toISOString(),
+    id: uuidv4(), userId: req.user.id, userName: req.user.name, userEmail: req.user.email,
+    upiId: upiId.trim(), amount: Number(amount), netAmount: net, status: 'pending', createdAt: new Date().toISOString(),
   };
   db.pendingWithdrawals.push(withdrawal);
   req.user.upiId = upiId.trim();
@@ -305,27 +273,14 @@ app.post('/api/admin/withdrawal/action', (req, res) => {
   const withdrawal = db.pendingWithdrawals.find(w => w.id === withdrawalId);
   if (!withdrawal) return res.status(404).json({ message: 'Withdrawal not found' });
   if (withdrawal.status !== 'pending') return res.status(400).json({ message: 'Already processed' });
-
   if (action === 'approve') {
     withdrawal.status = 'approved';
     const user = db.users.find(u => u.id === withdrawal.userId);
-    if (user) {
-      user.balance = (user.balance || 0) - withdrawal.amount;
-      if (user.balance < 0) user.balance = 0;
-    }
+    if (user) { user.balance = (user.balance || 0) - withdrawal.amount; if (user.balance < 0) user.balance = 0; }
     saveData();
-    return res.json({
-      message: `Withdrawal approved. Please send ₹${withdrawal.netAmount} to ${withdrawal.upiId}`,
-      netAmount: withdrawal.netAmount,
-      upiId: withdrawal.upiId,
-    });
-  } else if (action === 'reject') {
-    withdrawal.status = 'rejected';
-    saveData();
-    return res.json({ message: 'Withdrawal rejected.' });
-  } else {
-    return res.status(400).json({ message: 'Invalid action. Use "approve" or "reject".' });
-  }
+    return res.json({ message: `Withdrawal approved. Send ₹${withdrawal.netAmount} to ${withdrawal.upiId}`, netAmount: withdrawal.netAmount, upiId: withdrawal.upiId });
+  } else if (action === 'reject') { withdrawal.status = 'rejected'; saveData(); return res.json({ message: 'Withdrawal rejected.' }); }
+  else { return res.status(400).json({ message: 'Invalid action.' }); }
 });
 
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, '..', 'frontend', 'index.html')));
