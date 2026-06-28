@@ -75,6 +75,7 @@
     .upi-box { background:#1a1a2e; padding:12px; border-radius:10px; margin:10px 0; text-align:center; font-size:1.2rem; word-break:break-all; }
     .deposit-item { background:var(--surface2); border-radius:10px; padding:10px; margin-bottom:10px; }
     .qr-img { width:180px; height:180px; border-radius:8px; background:#fff; padding:5px; margin:10px auto; display:block; }
+    .pool-info { text-align:center; color:var(--gold); font-size:0.85rem; margin-top:4px; }
     @media (max-width:750px) { .matches-grid { grid-template-columns:1fr; } }
   </style>
 </head>
@@ -152,6 +153,9 @@
       <hr style="margin:20px 0; border-color:var(--border);">
       <h3>Manage Withdrawals</h3>
       <button class="btn-submit" onclick="openAdminWithdrawals()">📋 View Pending Withdrawals</button>
+      <hr style="margin:20px 0; border-color:var(--border);">
+      <h3>View Bets</h3>
+      <button class="btn-submit" onclick="openAdminBets()">📊 View Bets for a Match</button>
     </div>
   </div>
 
@@ -172,6 +176,16 @@
       <h2>📋 Pending Withdrawals</h2>
       <div id="pendingWithdrawalsList" style="max-height:400px; overflow-y:auto;"></div>
       <div class="error-msg" id="adminWithdrawalError"></div>
+    </div>
+  </div>
+
+  <!-- Admin View Bets Modal -->
+  <div class="modal-overlay" id="adminBetsModal" style="display:none;">
+    <div class="modal" style="width:500px;">
+      <button class="close-btn" onclick="document.getElementById('adminBetsModal').style.display='none'">✕</button>
+      <h2>📊 Bets for Match</h2>
+      <div id="betsList" style="max-height:400px; overflow-y:auto;"></div>
+      <div class="error-msg" id="adminBetsError"></div>
     </div>
   </div>
 
@@ -336,6 +350,7 @@
               <span>${home.flag} ${home.bets}</span>
               <span>${away.flag} ${away.bets}</span>
             </div>
+            <div class="pool-info">Pool: ₹${(home.bets + away.bets) * 500}</div>
             <div style="display:flex; gap:10px;">
               <button class="btn-bet" style="background:${home.primary}; color:white;" ${homeDisabled?'disabled':''} onclick="placeBet('${m.id}','home')">${homeTxt}</button>
               <button class="btn-bet" style="background:${away.primary}; color:white;" ${awayDisabled?'disabled':''} onclick="placeBet('${m.id}','away')">${awayTxt}</button>
@@ -481,6 +496,41 @@
         if (res.ok) { showToast(data.message, 'success'); openAdminWithdrawals(); }
         else { showToast(data.message, 'error'); }
       } catch (err) { showToast('Error', 'error'); }
+    }
+
+    /* ========== ADMIN VIEW BETS ========== */
+    async function openAdminBets() {
+      const secret = document.getElementById('adminSecret')?.value || prompt('Enter admin secret:');
+      if (!secret) return;
+      const matchId = prompt('Enter Match ID (e.g., match_0):');
+      if (!matchId) return;
+
+      try {
+        const res = await fetch(API_BASE + `/api/admin/bets?secret=${encodeURIComponent(secret)}&matchId=${matchId}`);
+        const data = await res.json();
+        if (res.ok) {
+          renderBets(data.bets, matchId);
+          document.getElementById('adminBetsModal').style.display = 'flex';
+        } else { showToast(data.message, 'error'); }
+      } catch (err) { showToast('Error fetching bets', 'error'); }
+    }
+
+    function renderBets(bets, matchId) {
+      const container = document.getElementById('betsList');
+      if (bets.length === 0) {
+        container.innerHTML = '<p style="color:var(--text2);">No bets found for this match.</p>';
+        return;
+      }
+      container.innerHTML = `
+        <p style="margin-bottom:10px;">Match ID: ${matchId}</p>
+        ${bets.map(b => `
+          <div class="deposit-item">
+            <p><strong>${b.userName}</strong> (${b.userEmail})</p>
+            <p>Bet on: ${b.flag} ${b.chocolateName} | ₹${b.amount} | Status: ${b.status}</p>
+            <p style="font-size:0.7rem;">${new Date(b.purchasedAt).toLocaleString()}</p>
+          </div>
+        `).join('')}
+      `;
     }
 
     async function setWinner(e) {
