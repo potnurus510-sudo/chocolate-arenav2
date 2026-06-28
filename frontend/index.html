@@ -42,7 +42,7 @@
       box-shadow:var(--shadow); transition:transform 0.3s;
     }
     .match-card:hover { transform:translateY(-4px); }
-    .match-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+    .match-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:5px; }
     .match-status { padding:4px 12px; border-radius:20px; font-size:0.7rem; text-transform:uppercase; font-weight:700; }
     .status-upcoming { background:#23d16030; color:#23d160; }
     .status-live { background:#ff386030; color:#ff3860; }
@@ -52,7 +52,7 @@
     .country-flag { font-size:3rem; }
     .country-name { font-size:1rem; font-weight:700; }
     .country-chocolate { font-size:0.8rem; color:var(--text2); }
-    .bet-counts { display:flex; justify-content:space-around; margin:10px 0; font-size:0.8rem; }
+    .bet-counts { display:flex; justify-content:space-around; margin:10px 0; font-size:0.85rem; }
     .btn-bet {
       display:block; width:100%; padding:10px; border-radius:25px; border:none;
       font-weight:800; font-size:0.9rem; cursor:pointer; text-transform:uppercase; transition:all 0.3s;
@@ -319,7 +319,12 @@
         const isLiveOrClosed = m.status === 'live' || m.status === 'closed';
         const homeFull = home.bets > away.bets;
         const awayFull = away.bets > home.bets;
-        let homeTxt = 'Bet ' + home.name, awayTxt = 'Bet ' + away.name;
+        const homeAmount = home.bets * 500;
+        const awayAmount = away.bets * 500;
+        const totalPool = (home.bets + away.bets) * 500;
+
+        let homeTxt = 'Bet ' + home.name + ' ₹500';
+        let awayTxt = 'Bet ' + away.name + ' ₹500';
         let homeDisabled = true, awayDisabled = true;
         if (isUpcoming) {
           if (!homeFull && authToken) homeDisabled = false;
@@ -327,10 +332,12 @@
         } else if (isLiveOrClosed) {
           homeTxt = 'Completed'; awayTxt = 'Completed';
         }
+
         return `
           <div class="match-card">
             <div class="match-header">
               <span class="match-status status-${m.status}">${m.status === 'closed' ? 'Completed' : m.status}</span>
+              <span style="font-size:0.65rem; color:var(--text2);">ID: ${m.id}</span>
               <span style="font-size:0.8rem;color:var(--text2);">${new Date(m.startTime).toLocaleString()}</span>
             </div>
             <div class="country-pair">
@@ -347,10 +354,10 @@
               </div>
             </div>
             <div class="bet-counts">
-              <span>${home.flag} ${home.bets}</span>
-              <span>${away.flag} ${away.bets}</span>
+              <span>${home.flag} ${home.name} ₹${homeAmount}</span>
+              <span>${away.flag} ${away.name} ₹${awayAmount}</span>
             </div>
-            <div class="pool-info">Pool: ₹${(home.bets + away.bets) * 500}</div>
+            <div class="pool-info">Pool: ₹${totalPool}</div>
             <div style="display:flex; gap:10px;">
               <button class="btn-bet" style="background:${home.primary}; color:white;" ${homeDisabled?'disabled':''} onclick="placeBet('${m.id}','home')">${homeTxt}</button>
               <button class="btn-bet" style="background:${away.primary}; color:white;" ${awayDisabled?'disabled':''} onclick="placeBet('${m.id}','away')">${awayTxt}</button>
@@ -498,7 +505,6 @@
       } catch (err) { showToast('Error', 'error'); }
     }
 
-    /* ========== ADMIN VIEW BETS ========== */
     async function openAdminBets() {
       const secret = document.getElementById('adminSecret')?.value || prompt('Enter admin secret:');
       if (!secret) return;
